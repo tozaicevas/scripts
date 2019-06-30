@@ -27,8 +27,9 @@ public class Employee {
         return id;
     }
     
-    public Double setSalary() {
-        return salary;
+    public void setSalary(Double salary) {
+        if (salary > 50) 
+            this.salary = salary;
     }
 
     public String toString() {
