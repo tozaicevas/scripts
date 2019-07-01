@@ -35,7 +35,7 @@ const checkForAdditionalLogic = (content, methodName) => {
     const methodBody = content.match(METHOD_BODY_REGEX)[METHOD_BODY_INDEX];
     const SETTER_WITHOUT_ADDITIONAL_LOGIC_REGEX = /^\s*this\.\w+\s*=.*?;\s*$/;
     const GETTER_WITHOUT_ADDITIONAL_LOGIC_REGEX = /^\s*return\s\w+?;\s*$/;
-    return !((methodBody.match(SETTER_WITHOUT_ADDITIONAL_LOGIC_REGEX != null) || (methodBody.match(GETTER_WITHOUT_ADDITIONAL_LOGIC_REGEX) != null)));
+    return !(methodBody.match(SETTER_WITHOUT_ADDITIONAL_LOGIC_REGEX) != null) && !(methodBody.match(GETTER_WITHOUT_ADDITIONAL_LOGIC_REGEX) != null);
 }
 
 const analyzeFile = (err, content, next) => {
@@ -49,8 +49,9 @@ const analyzeFile = (err, content, next) => {
     let gettersAndSettersWithAdditionalLogicCount = 0;
     lines.forEach(line => {
         let result;
-        if (result = checkForPublicClass(line))
+        if (result = checkForPublicClass(line)) {
             className = result[FIRST_MATCH];
+        }
         else if (result = checkForPrivateField(line))
             privateFields.push(result[FIRST_MATCH]);
         else if (result = checkForPublicMethod(line)) {
@@ -62,57 +63,83 @@ const analyzeFile = (err, content, next) => {
         else
             isBuilderPresent = isBuilderPresent || (checkForBuilderClass(line) ? true : false);
     });
-    const gettersCount = getNumberOfGetters(publicMethods);
-    const settersCount = getNumberOfSetters(publicMethods);
-    const containsToString = checkForToStringMethod(publicMethods);
-    const containsEqualsMethod = checkForEqualsMethod(publicMethods);
-    const allMethodsArePojo = (gettersCount + settersCount + containsToString.valueOf()) === publicMethods.length;
-    const allFieldsHaveGettersAndSetters = privateFields.length === gettersCount;
-    const isPojo = (gettersCount === settersCount) && allMethodsArePojo && allFieldsHaveGettersAndSetters;
-    console.log(`///--- ${className}.java ---///`);
-    if (isBuilderPresent)
-        console.log("Builder present\n");
-    else
-        console.log(`POJO: ${isPojo}\n`);
+    if (className) {
+        const gettersCount = getNumberOfGetters(publicMethods);
+        const settersCount = getNumberOfSetters(publicMethods);
+        const containsToString = checkForToStringMethod(publicMethods);
+        const containsEqualsMethod = checkForEqualsMethod(publicMethods);
+        const allMethodsArePojo = (gettersCount + settersCount + containsToString.valueOf()) === publicMethods.length;
+        const allFieldsHaveGettersAndSetters = privateFields.length === gettersCount;
+        const isPojo = (gettersCount === settersCount) && allMethodsArePojo && allFieldsHaveGettersAndSetters;
+        console.log(`///--- ${className}.java ---///`);
+        if (isBuilderPresent)
+            console.log("Builder present\n");
+        else
+            console.log(`POJO: ${isPojo}\n`);
 
-    const classInfo = {
-        name: className,
-        isPojo,
-        gettersCount,
-        settersCount,
-        containsToString,
-        containsEqualsMethod,
-        isBuilderPresent,
-        gettersAndSettersWithAdditionalLogicCount
-    };
-    classesInfo.push(classInfo);
+        const classInfo = {
+            className,
+            isPojo,
+            gettersCount,
+            settersCount,
+            containsToString,
+            containsEqualsMethod,
+            isBuilderPresent,
+            gettersAndSettersWithAdditionalLogicCount
+        };
+        classesInfo.push(classInfo);
+    }
     next();
 };
 
 const finishAnalyzingFiles = (err, files) => {
     if (err) throw err;
-    const pojosCounter = classesInfo.filter(classInfo => classInfo.isPojo).length;
     const builderCounter = classesInfo.filter(classInfo => classInfo.isBuilderPresent).length;
-    const getters = classesInfo.filter(classInfo => classInfo.isPojo)
-        .reduce((prevValue, currValue) => currValue.gettersCount + prevValue, 0);
-    const setters = classesInfo.filter(classInfo => classInfo.isPojo)
-        .reduce((prevValue, currValue) => currValue.settersCount + prevValue, 0);
     const toStringMethodsCount = classesInfo.filter(classInfo => classInfo.containsToString).length;
     const equalsMethodsCount = classesInfo.filter(classInfo => classInfo.containsEqualsMethod).length;
     const gettersAndSettersWithAdditionalLogicCount = classesInfo
         .reduce((prevValue, currValue) => currValue.gettersAndSettersWithAdditionalLogicCount + prevValue, 0);
-    console.log(`${files.length} classes`);
-    console.log(`${pojosCounter} pojos`);
+
+    const gettersAndSettersWithAdditionalLogicInPojosCount = classesInfo
+        .filter(classInfo => classInfo.isPojo)
+        .reduce((prevValue, currValue) => currValue.gettersAndSettersWithAdditionalLogicCount + prevValue, 0);
+    const pojosCounter = classesInfo.filter(classInfo => classInfo.isPojo).length;
+    const gettersInPojos = classesInfo.filter(classInfo => classInfo.isPojo)
+        .filter(classInfo => classInfo.isPojo)
+        .reduce((prevValue, currValue) => currValue.gettersCount + prevValue, 0);
+    const settersInPojos = classesInfo.filter(classInfo => classInfo.isPojo)
+        .filter(classInfo => classInfo.isPojo)
+        .reduce((prevValue, currValue) => currValue.settersCount + prevValue, 0);
+    const toStringMethodsInPojosCount = classesInfo.filter(classInfo => classInfo.isPojo)
+        .filter(classInfo => classInfo.containsToString).length;
+    const equalsMethodsInPojosCount = classesInfo.filter(classInfo => classInfo.isPojo)
+        .filter(classInfo => classInfo.containsEqualsMethod).length;
+
+    classesInfo.filter(classInfo => classInfo.containsEqualsMethod).forEach(classInfo => console.log(`${classInfo.className} with equals()`));
+    var fs = require("fs");
+
+    fs.writeFile("analyzed_files_pojo.txt", files.join('\r\n'), (err) => {
+      if (err) console.log(err);
+      console.log("Successfully wrote classes to analyzed_files_pojo.txt");
+    });
+
+    console.log(`${files.length} .java files`);
+    console.log(`${classesInfo.length} non-abstract classes`);
     console.log(`${builderCounter} builders`);
-    console.log(`${getters} getters`);
-    console.log(`${setters} setters`);
     console.log(`${toStringMethodsCount} toString() methods`);
     console.log(`${equalsMethodsCount} equals() methods`);
-    console.log(`${gettersAndSettersWithAdditionalLogicCount} getters/setters with additional logic`);
+    console.log('///--- POJO ---///');
+    console.log(`${pojosCounter} pojos`);
+    console.log(`${gettersAndSettersWithAdditionalLogicInPojosCount} getters/setters with additional logic`);
+    console.log(`${gettersInPojos} getters`);
+    console.log(`${settersInPojos} setters`);
+    console.log(`${toStringMethodsInPojosCount} toString() methods`);
+    console.log(`${equalsMethodsInPojosCount} equals() methods`);
 }
 
 const dir = require('node-dir');
 dir.readFiles(__dirname, {
-    exclude: ['node_modules', 'test'],
-    match: /.java$/
+    exclude: ['node_modules', 'test', 'target'],
+    match: /.java$/,
+    excludeDir: /.*(target|test).*/
 }, analyzeFile, finishAnalyzingFiles);
