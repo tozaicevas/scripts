@@ -8,24 +8,24 @@ const LAST_LINE = "}";
 const n = process.argv[VERTICES_ARGUMENT_INDEX] || 50;
 const maxEdges = process.argv[MAX_EDGES_ARGUMENT_INDEX] || 5;
 const vertices = [...Array(parseInt(n)).keys()];
-const levelMap = {};
 
 const getEdge = (from, to) => `${from} -> ${to}`;
 const edgeToString = (edge) => `\t${edge};`;
 const edgesToString = (edges) => edges.map(edge => edgeToString(edge)).join('\n');
 
 const getInitialEdges = (vertices) => {
-	levelMap[0] = 0;
-	return vertices
+	const levelMap = {0: 0};
+	const edges = vertices
 		.filter(i => i > 0)
 		.map(i => {
 			const randomVertice = Math.floor(Math.random() * i);	
 			levelMap[i] = levelMap[randomVertice] + 1;
 			return getEdge(randomVertice, i);
 		});
+	return { edges, levelMap };
 }
 
-const getMoreEdges = (vertices) => {
+const getMoreEdges = (vertices, levelMap) => {
 	return vertices
 		.map(i => {
 			const nonCyclicVertices = vertices
@@ -38,7 +38,7 @@ const getMoreEdges = (vertices) => {
 		}).flat();
 };
 
-const addWeights = edges => {
+const getGraphWithWeights = edges => {
 	return edges.map(edge => {
 		const weight = Math.floor(Math.random() * 100) + 1;
 		return `${edge} [label="${weight}"]`;
@@ -46,10 +46,10 @@ const addWeights = edges => {
 };
 
 const getDotFormattedGraph = () => {
-	const initialEdges = getInitialEdges(vertices);
-	const moreEdges = getMoreEdges(vertices);
-	const allEdges = [...initialEdges, ...moreEdges];
-	const allEdgesWithWeights = addWeights(allEdges);
+	const edgesAndLevels = getInitialEdges(vertices);
+	const moreEdges = getMoreEdges(vertices, edgesAndLevels.levelMap);
+	const allEdges = [...edgesAndLevels.edges, ...moreEdges];
+	const allEdgesWithWeights = getGraphWithWeights(allEdges);
 	const fullGraph = edgesToString(allEdgesWithWeights);
 	return `${FIRST_LINE}\n${fullGraph}\n${LAST_LINE}`;
 }
